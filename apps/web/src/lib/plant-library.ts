@@ -1,0 +1,360 @@
+/**
+ * Plant Library - Local plant data for the garden planner
+ */
+
+export type PlantCategory =
+  | 'tree'
+  | 'fruit_tree'
+  | 'shrub'
+  | 'perennial'
+  | 'hedge'
+  | 'annual'
+  | 'vegetable'
+  | 'herb'
+  | 'berry';
+
+export interface GrowthModel {
+  species: string;
+  common_name: string;
+  mature_height_cm: number;
+  mature_canopy_cm: number;
+  growth_rate: 'slow' | 'medium' | 'fast';
+  years_to_mature: number;
+  carbon_per_year_kg: number;
+}
+
+export const PLANT_LIBRARY: Record<PlantCategory, GrowthModel[]> = {
+  tree: [
+    {
+      species: 'quercus_robur',
+      common_name: 'English Oak',
+      mature_height_cm: 2500,
+      mature_canopy_cm: 2000,
+      growth_rate: 'slow',
+      years_to_mature: 50,
+      carbon_per_year_kg: 22,
+    },
+    {
+      species: 'fagus_sylvatica',
+      common_name: 'European Beech',
+      mature_height_cm: 3000,
+      mature_canopy_cm: 1500,
+      growth_rate: 'medium',
+      years_to_mature: 40,
+      carbon_per_year_kg: 18,
+    },
+    {
+      species: 'betula_pendula',
+      common_name: 'Silver Birch',
+      mature_height_cm: 2000,
+      mature_canopy_cm: 1000,
+      growth_rate: 'fast',
+      years_to_mature: 20,
+      carbon_per_year_kg: 12,
+    },
+    {
+      species: 'acer_campestre',
+      common_name: 'Field Maple',
+      mature_height_cm: 1500,
+      mature_canopy_cm: 1200,
+      growth_rate: 'medium',
+      years_to_mature: 30,
+      carbon_per_year_kg: 10,
+    },
+  ],
+  fruit_tree: [
+    {
+      species: 'malus_domestica',
+      common_name: 'Apple Tree',
+      mature_height_cm: 400,
+      mature_canopy_cm: 400,
+      growth_rate: 'medium',
+      years_to_mature: 8,
+      carbon_per_year_kg: 5,
+    },
+    {
+      species: 'prunus_avium',
+      common_name: 'Cherry Tree',
+      mature_height_cm: 1000,
+      mature_canopy_cm: 800,
+      growth_rate: 'medium',
+      years_to_mature: 7,
+      carbon_per_year_kg: 8,
+    },
+    {
+      species: 'pyrus_communis',
+      common_name: 'Pear Tree',
+      mature_height_cm: 500,
+      mature_canopy_cm: 350,
+      growth_rate: 'medium',
+      years_to_mature: 8,
+      carbon_per_year_kg: 5,
+    },
+    {
+      species: 'prunus_domestica',
+      common_name: 'Plum Tree',
+      mature_height_cm: 400,
+      mature_canopy_cm: 400,
+      growth_rate: 'medium',
+      years_to_mature: 6,
+      carbon_per_year_kg: 4,
+    },
+  ],
+  shrub: [
+    {
+      species: 'cornus_sanguinea',
+      common_name: 'Dogwood',
+      mature_height_cm: 300,
+      mature_canopy_cm: 300,
+      growth_rate: 'medium',
+      years_to_mature: 5,
+      carbon_per_year_kg: 2,
+    },
+    {
+      species: 'viburnum_opulus',
+      common_name: 'Guelder Rose',
+      mature_height_cm: 400,
+      mature_canopy_cm: 350,
+      growth_rate: 'medium',
+      years_to_mature: 6,
+      carbon_per_year_kg: 2.5,
+    },
+    {
+      species: 'sambucus_nigra',
+      common_name: 'Elder',
+      mature_height_cm: 600,
+      mature_canopy_cm: 500,
+      growth_rate: 'fast',
+      years_to_mature: 5,
+      carbon_per_year_kg: 3,
+    },
+    {
+      species: 'hydrangea_macrophylla',
+      common_name: 'Hydrangea',
+      mature_height_cm: 200,
+      mature_canopy_cm: 200,
+      growth_rate: 'medium',
+      years_to_mature: 4,
+      carbon_per_year_kg: 1,
+    },
+  ],
+  perennial: [
+    {
+      species: 'lavandula_angustifolia',
+      common_name: 'Lavender',
+      mature_height_cm: 60,
+      mature_canopy_cm: 60,
+      growth_rate: 'medium',
+      years_to_mature: 2,
+      carbon_per_year_kg: 0.3,
+    },
+    {
+      species: 'echinacea_purpurea',
+      common_name: 'Purple Coneflower',
+      mature_height_cm: 120,
+      mature_canopy_cm: 60,
+      growth_rate: 'medium',
+      years_to_mature: 2,
+      carbon_per_year_kg: 0.2,
+    },
+    {
+      species: 'rudbeckia_fulgida',
+      common_name: 'Black-Eyed Susan',
+      mature_height_cm: 90,
+      mature_canopy_cm: 60,
+      growth_rate: 'fast',
+      years_to_mature: 1,
+      carbon_per_year_kg: 0.2,
+    },
+    {
+      species: 'hosta_sieboldiana',
+      common_name: 'Hosta',
+      mature_height_cm: 60,
+      mature_canopy_cm: 90,
+      growth_rate: 'slow',
+      years_to_mature: 4,
+      carbon_per_year_kg: 0.3,
+    },
+  ],
+  hedge: [
+    {
+      species: 'carpinus_betulus',
+      common_name: 'Hornbeam Hedge',
+      mature_height_cm: 400,
+      mature_canopy_cm: 100,
+      growth_rate: 'medium',
+      years_to_mature: 10,
+      carbon_per_year_kg: 3,
+    },
+    {
+      species: 'taxus_baccata',
+      common_name: 'Yew Hedge',
+      mature_height_cm: 300,
+      mature_canopy_cm: 80,
+      growth_rate: 'slow',
+      years_to_mature: 15,
+      carbon_per_year_kg: 2,
+    },
+    {
+      species: 'buxus_sempervirens',
+      common_name: 'Box Hedge',
+      mature_height_cm: 150,
+      mature_canopy_cm: 60,
+      growth_rate: 'slow',
+      years_to_mature: 10,
+      carbon_per_year_kg: 1,
+    },
+    {
+      species: 'ligustrum_vulgare',
+      common_name: 'Privet Hedge',
+      mature_height_cm: 300,
+      mature_canopy_cm: 80,
+      growth_rate: 'fast',
+      years_to_mature: 5,
+      carbon_per_year_kg: 2,
+    },
+  ],
+  annual: [
+    {
+      species: 'helianthus_annuus',
+      common_name: 'Sunflower',
+      mature_height_cm: 250,
+      mature_canopy_cm: 60,
+      growth_rate: 'fast',
+      years_to_mature: 1,
+      carbon_per_year_kg: 0.5,
+    },
+    {
+      species: 'zinnia_elegans',
+      common_name: 'Zinnia',
+      mature_height_cm: 90,
+      mature_canopy_cm: 40,
+      growth_rate: 'fast',
+      years_to_mature: 1,
+      carbon_per_year_kg: 0.1,
+    },
+    {
+      species: 'cosmos_bipinnatus',
+      common_name: 'Cosmos',
+      mature_height_cm: 120,
+      mature_canopy_cm: 60,
+      growth_rate: 'fast',
+      years_to_mature: 1,
+      carbon_per_year_kg: 0.1,
+    },
+  ],
+  vegetable: [
+    {
+      species: 'solanum_lycopersicum',
+      common_name: 'Tomato',
+      mature_height_cm: 150,
+      mature_canopy_cm: 60,
+      growth_rate: 'fast',
+      years_to_mature: 1,
+      carbon_per_year_kg: 0.2,
+    },
+    {
+      species: 'cucumis_sativus',
+      common_name: 'Cucumber',
+      mature_height_cm: 200,
+      mature_canopy_cm: 80,
+      growth_rate: 'fast',
+      years_to_mature: 1,
+      carbon_per_year_kg: 0.1,
+    },
+    {
+      species: 'brassica_oleracea',
+      common_name: 'Cabbage',
+      mature_height_cm: 60,
+      mature_canopy_cm: 60,
+      growth_rate: 'medium',
+      years_to_mature: 1,
+      carbon_per_year_kg: 0.2,
+    },
+    {
+      species: 'daucus_carota',
+      common_name: 'Carrot',
+      mature_height_cm: 40,
+      mature_canopy_cm: 30,
+      growth_rate: 'medium',
+      years_to_mature: 1,
+      carbon_per_year_kg: 0.1,
+    },
+  ],
+  herb: [
+    {
+      species: 'rosmarinus_officinalis',
+      common_name: 'Rosemary',
+      mature_height_cm: 100,
+      mature_canopy_cm: 80,
+      growth_rate: 'medium',
+      years_to_mature: 3,
+      carbon_per_year_kg: 0.3,
+    },
+    {
+      species: 'thymus_vulgaris',
+      common_name: 'Thyme',
+      mature_height_cm: 30,
+      mature_canopy_cm: 40,
+      growth_rate: 'medium',
+      years_to_mature: 2,
+      carbon_per_year_kg: 0.1,
+    },
+    {
+      species: 'mentha_spicata',
+      common_name: 'Spearmint',
+      mature_height_cm: 60,
+      mature_canopy_cm: 60,
+      growth_rate: 'fast',
+      years_to_mature: 1,
+      carbon_per_year_kg: 0.1,
+    },
+    {
+      species: 'ocimum_basilicum',
+      common_name: 'Basil',
+      mature_height_cm: 60,
+      mature_canopy_cm: 40,
+      growth_rate: 'fast',
+      years_to_mature: 1,
+      carbon_per_year_kg: 0.1,
+    },
+  ],
+  berry: [
+    {
+      species: 'rubus_idaeus',
+      common_name: 'Raspberry',
+      mature_height_cm: 180,
+      mature_canopy_cm: 100,
+      growth_rate: 'fast',
+      years_to_mature: 2,
+      carbon_per_year_kg: 0.5,
+    },
+    {
+      species: 'ribes_nigrum',
+      common_name: 'Blackcurrant',
+      mature_height_cm: 150,
+      mature_canopy_cm: 150,
+      growth_rate: 'medium',
+      years_to_mature: 3,
+      carbon_per_year_kg: 0.8,
+    },
+    {
+      species: 'vaccinium_corymbosum',
+      common_name: 'Blueberry',
+      mature_height_cm: 180,
+      mature_canopy_cm: 120,
+      growth_rate: 'slow',
+      years_to_mature: 5,
+      carbon_per_year_kg: 0.6,
+    },
+    {
+      species: 'fragaria_ananassa',
+      common_name: 'Strawberry',
+      mature_height_cm: 30,
+      mature_canopy_cm: 40,
+      growth_rate: 'fast',
+      years_to_mature: 1,
+      carbon_per_year_kg: 0.1,
+    },
+  ],
+};

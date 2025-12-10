@@ -1,0 +1,71 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+.next/
+out/
+dist/
+build/
+.turbo/
+
+# Hardhat
+artifacts/
+cache/
+typechain-types/
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Testing
+coverage/
+
+# Misc
+*.pem
+.vercel
+*.tsbuildinfo
+
+# Deployment
+deployments/localhost/
+deployments/**/solcInputs/
+
+# Local development
+.env.local
+
+# Claude Code / Playwright MCP (development tools)
+.claude/
+.playwright-mcp/
+
+# docs folder (if generated)
+docs/
+
+# Rails secrets
+backend/config/master.key
+backend/config/credentials/*.key
+
+# Rails logs and temp files
+backend/log/*.log
+backend/tmp/pids/*.pid
+backend/storage/*
+!backend/storage/.keep
