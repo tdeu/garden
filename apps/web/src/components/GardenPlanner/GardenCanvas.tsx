@@ -5,8 +5,10 @@ import { MapContainer, TileLayer, WMSTileLayer, ImageOverlay, Marker, Polygon, P
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw/dist/leaflet.draw.css';
-import { useGardenStore, Plant, Zone, Structure } from '@/stores/garden-store';
+import { useGardenStore, Plant, Zone, Structure, CameraPosition } from '@/stores/garden-store';
 import type { TimelineMode } from './Timeline';
+import { CanvasGarden } from './CanvasGarden';
+import { ViewpointPositionOverlay } from './ViewpointPositionOverlay';
 
 // Custom 2025 imagery - one image per zoom level (Huombois, Étalle, Belgium)
 // Center: 49.6387, 5.5522 - Bounds calculated to match image aspect ratios
@@ -37,8 +39,11 @@ const ZOOM_IMAGES_CLEAN: Record<number, { url: string; bounds: [[number, number]
 };
 
 // Walloon orthophoto WMS services by year (aerial photos)
+// Service names verified from: https://geoservices.wallonie.be/arcgis/rest/services/IMAGERIE?f=json
 const WALLOON_ORTHO_SERVICES: Record<number, { url: string; layers: string; type: 'ortho' | 'map' }> = {
-  2023: { url: 'https://geoservices.wallonie.be/arcgis/services/IMAGERIE/ORTHO_2023/MapServer/WMSServer', layers: '0', type: 'ortho' },
+  // Modern orthophotos (using correct service names from Walloon geoportal)
+  // Note: 2024 removed - no coverage for this property location
+  2023: { url: 'https://geoservices.wallonie.be/arcgis/services/IMAGERIE/ORTHO_2023_ETE/MapServer/WMSServer', layers: '0', type: 'ortho' },
   2021: { url: 'https://geoservices.wallonie.be/arcgis/services/IMAGERIE/ORTHO_2021/MapServer/WMSServer', layers: '0', type: 'ortho' },
   2019: { url: 'https://geoservices.wallonie.be/arcgis/services/IMAGERIE/ORTHO_2019/MapServer/WMSServer', layers: '0', type: 'ortho' },
   2015: { url: 'https://geoservices.wallonie.be/arcgis/services/IMAGERIE/ORTHO_2015/MapServer/WMSServer', layers: '0', type: 'ortho' },
@@ -108,6 +113,12 @@ interface GardenCanvasProps {
   onMapClick?: (latlng: { lat: number; lng: number }) => void;
   timelineMode?: TimelineMode;
   timelineYear?: number;
+  // Future mode props for viewpoint position overlay
+  showViewpointOverlay?: boolean;
+  viewpointCameraPosition?: CameraPosition | null;
+  viewpointCameraDirection?: number;
+  onViewpointPositionChange?: (pos: CameraPosition) => void;
+  onViewpointDirectionChange?: (degrees: number) => void;
 }
 
 // Component to handle map events
@@ -196,36 +207,97 @@ function ZoomImageOverlay({ restrictBounds = true }: { restrictBounds?: boolean 
   );
 }
 
+// Component to display WMS layer for historical imagery
+function WmsLayer({ url, layers, attribution, center }: { url: string; layers: string; attribution: string; center: [number, number] }) {
+  const map = useMap();
+  const wmsLayerRef = useRef<L.TileLayer.WMS | null>(null);
+  const [isReady, setIsReady] = useState(false);
+
+  // First effect: Reset map state when component mounts
+  useEffect(() => {
+    console.log('WmsLayer: Resetting map state for', url.split('/').slice(-3).join('/'));
+
+    // CRITICAL: Remove any bounds restrictions that corrupt Leaflet's projection
+    map.setMaxBounds(null as unknown as L.LatLngBoundsExpression);
+    map.setMinZoom(12);
+    map.options.maxBoundsViscosity = 0;
+
+    // Force reset the map's view to the correct center
+    // Use reset: true to force a complete view reset
+    const targetZoom = Math.min(map.getZoom(), 18);
+
+    // Set view with no animation to prevent race conditions
+    map.setView(center, targetZoom, { animate: false, noMoveStart: true });
+
+    // Force invalidate to recalculate all internal state
+    map.invalidateSize({ animate: false, pan: false });
+
+    // Mark as ready after the map has had time to settle
+    const readyTimer = setTimeout(() => {
+      // Double-check and force the center again right before creating WMS layer
+      map.setView(center, map.getZoom(), { animate: false, noMoveStart: true });
+      setIsReady(true);
+    }, 150);
+
+    return () => {
+      clearTimeout(readyTimer);
+      setIsReady(false);
+    };
+  }, [map, center, url]);
+
+  // Second effect: Create WMS layer only after map is ready
+  useEffect(() => {
+    if (!isReady) return;
+
+    console.log('WmsLayer: Creating layer at center:', map.getCenter().lat.toFixed(5), map.getCenter().lng.toFixed(5));
+
+    // Remove any existing layer
+    if (wmsLayerRef.current) {
+      map.removeLayer(wmsLayerRef.current);
+      wmsLayerRef.current = null;
+    }
+
+    // Create the WMS layer
+    const wmsLayer = L.tileLayer.wms(url, {
+      layers: layers,
+      format: 'image/jpeg',
+      transparent: false,
+      version: '1.1.1',
+      attribution: attribution,
+    });
+
+    wmsLayerRef.current = wmsLayer;
+    wmsLayer.addTo(map);
+    wmsLayer.bringToFront();
+
+    return () => {
+      if (wmsLayerRef.current) {
+        console.log('WmsLayer: Cleanup');
+        map.removeLayer(wmsLayerRef.current);
+        wmsLayerRef.current = null;
+      }
+    };
+  }, [isReady, map, url, layers, attribution]);
+
+  return null;
+}
+
 // Component to show zoom-appropriate CLEANED imagery for "Today/Present" mode
-// Uses clean versions (rocks/labels removed), falls back to originals if not available
-function CleanZoomImageOverlay() {
+// Uses clean versions (rocks/labels removed) for garden planning
+function CleanZoomImageOverlay({ center }: { center: [number, number] }) {
   const map = useMap();
   const [currentZoom, setCurrentZoom] = useState(map.getZoom());
-  const [cleanImagesAvailable, setCleanImagesAvailable] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
-    // Restrict zoom and pan to custom imagery area
-    map.setMinZoom(15);
-    map.setMaxBounds(CUSTOM_IMAGERY_BOUNDS);
-    map.options.maxBoundsViscosity = 1.0;
+    // Ensure we're at a valid zoom level for the custom imagery
+    const initialZoom = map.getZoom();
+    const validZoom = Math.max(15, Math.min(22, initialZoom));
 
-    // Check which clean images are available
-    const checkImages = async () => {
-      const available: Record<number, boolean> = {};
-      for (const zoomLevel of [15, 16, 17, 18, 19, 20, 21, 22]) {
-        const config = ZOOM_IMAGES_CLEAN[zoomLevel];
-        if (config) {
-          try {
-            const response = await fetch(config.url, { method: 'HEAD' });
-            available[zoomLevel] = response.ok;
-          } catch {
-            available[zoomLevel] = false;
-          }
-        }
-      }
-      setCleanImagesAvailable(available);
-    };
-    checkImages();
+    // Set minimum zoom only (no maxBounds to avoid view corruption)
+    map.setMinZoom(15);
+
+    // Center the map on the property center
+    map.setView(center, validZoom, { animate: false });
 
     const handleZoom = () => {
       setCurrentZoom(Math.round(map.getZoom()));
@@ -235,22 +307,20 @@ function CleanZoomImageOverlay() {
     return () => {
       map.off('zoomend', handleZoom);
       map.setMinZoom(12);
-      map.setMaxBounds(null as unknown as L.LatLngBoundsExpression);
     };
-  }, [map]);
+  }, [map, center]);
 
   // Get the image config for current zoom (clamp to available range 15-22)
   const zoomLevel = Math.max(15, Math.min(22, currentZoom));
 
-  // Try clean version first, fall back to original
-  const useClean = cleanImagesAvailable[zoomLevel];
-  const imageConfig = useClean ? ZOOM_IMAGES_CLEAN[zoomLevel] : ZOOM_IMAGES[zoomLevel];
+  // Use cleanup images for Today mode
+  const imageConfig = ZOOM_IMAGES_CLEAN[zoomLevel];
 
   if (!imageConfig) return null;
 
   return (
     <ImageOverlay
-      key={`clean-zoom-img-${zoomLevel}-${useClean ? 'clean' : 'original'}`}
+      key={`today-zoom-img-${zoomLevel}`}
       url={imageConfig.url}
       bounds={imageConfig.bounds}
       opacity={1}
@@ -259,9 +329,59 @@ function CleanZoomImageOverlay() {
   );
 }
 
-export function GardenCanvas({ center, zoom = 18, onMapClick, timelineMode = 'present', timelineYear }: GardenCanvasProps) {
+// Component to manage map center when switching timeline modes
+function TimelineModeManager({ center, timelineMode }: { center: [number, number]; timelineMode: TimelineMode }) {
+  const map = useMap();
+  const previousMode = useRef<TimelineMode>(timelineMode);
+
+  useEffect(() => {
+    // When switching FROM present/future TO past, reset the map view
+    // This is needed because the CleanZoomImageOverlay sets maxBounds which can corrupt coordinates
+    if (previousMode.current !== 'past' && timelineMode === 'past') {
+      console.log('Switching to Past mode, resetting map view to:', center);
+      // Remove any bounds restrictions first
+      map.setMaxBounds(null as unknown as L.LatLngBoundsExpression);
+      map.setMinZoom(12);
+      // Force set the view to correct center
+      map.setView(center, Math.min(map.getZoom(), 18), { animate: false });
+      // Invalidate size to force redraw
+      setTimeout(() => map.invalidateSize(), 50);
+    }
+    previousMode.current = timelineMode;
+  }, [map, center, timelineMode]);
+
+  return null;
+}
+
+export function GardenCanvas({
+  center,
+  zoom = 18,
+  onMapClick,
+  timelineMode = 'present',
+  timelineYear,
+  showViewpointOverlay = false,
+  viewpointCameraPosition,
+  viewpointCameraDirection = 0,
+  onViewpointPositionChange,
+  onViewpointDirectionChange,
+}: GardenCanvasProps) {
   const mapRef = useRef<L.Map | null>(null);
-  const { plants, zones, structures, selectedItemId, setSelectedItemId, property } = useGardenStore();
+  const {
+    plants: storePlants,
+    zones: storeZones,
+    structures: storeStructures,
+    futurePlanPlants,
+    futurePlanZones,
+    futurePlanStructures,
+    selectedItemId,
+    setSelectedItemId,
+    property
+  } = useGardenStore();
+
+  // In Future mode, use the future plan data; otherwise use the current store data
+  const plants = timelineMode === 'future' ? futurePlanPlants : storePlants;
+  const zones = timelineMode === 'future' ? futurePlanZones : storeZones;
+  const structures = timelineMode === 'future' ? futurePlanStructures : storeStructures;
 
   // Get the appropriate WMS config for historical imagery
   const getHistoricalWmsConfig = (year: number): { url: string; layers: string; type: 'ortho' | 'map' } | null => {
@@ -287,10 +407,54 @@ export function GardenCanvas({ center, zoom = 18, onMapClick, timelineMode = 'pr
     return undefined;
   }, [property]);
 
+  // For "present" and "future" modes, use Canvas-based view (inspired by simonsarris)
+  // This shows the clean property imagery with plants overlaid
+  if (timelineMode === 'present' || timelineMode === 'future') {
+    return (
+      <div className="w-full h-full relative">
+        <CanvasGarden
+          imageUrl="/garden-_cleanup.png"
+          center={center}
+          plants={plants}
+          zones={zones}
+          structures={structures}
+          readOnly={timelineMode === 'future'}
+        />
+        {/* Viewpoint position overlay for Future mode */}
+        {timelineMode === 'future' && showViewpointOverlay && (
+          <ViewpointPositionOverlay
+            cameraPosition={viewpointCameraPosition ?? null}
+            cameraDirection={viewpointCameraDirection}
+            onPositionChange={onViewpointPositionChange || (() => {})}
+            onDirectionChange={onViewpointDirectionChange || (() => {})}
+            enabled={true}
+          />
+        )}
+        {/* Coordinates and timeline display */}
+        <div className="absolute bottom-4 left-4 flex gap-2 z-[1001]">
+          <div className="bg-black/70 text-white px-3 py-1 rounded text-sm font-mono">
+            {center[0].toFixed(5)}, {center[1].toFixed(5)}
+          </div>
+          {timelineMode === 'future' && (
+            <div className="px-3 py-1 rounded text-sm font-medium bg-purple-600/90 text-white">
+              ✨ {timelineYear}
+            </div>
+          )}
+        </div>
+        {/* Help text for Future mode */}
+        {timelineMode === 'future' && (
+          <div className="absolute bottom-4 right-4 z-[1001] text-xs text-neutral-400 bg-black/50 px-2 py-1 rounded">
+            Scroll to zoom • Click to place camera
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // For past/future modes, use Leaflet map
   return (
     <div className="w-full h-full relative">
       <MapContainer
-        key={`map-${timelineMode}-${timelineYear}`}
         center={center}
         zoom={zoom}
         minZoom={12}
@@ -301,6 +465,9 @@ export function GardenCanvas({ center, zoom = 18, onMapClick, timelineMode = 'pr
         scrollWheelZoom={true}
         doubleClickZoom={true}
       >
+        {/* Manager to handle map center when switching timeline modes */}
+        <TimelineModeManager center={center} timelineMode={timelineMode} />
+
         {/* Base layer - switches based on timeline mode */}
         {timelineMode === 'past' && timelineYear === 2025 ? (
           /* Past 2025 - Custom screenshots (current state with rocks) */
@@ -317,48 +484,28 @@ export function GardenCanvas({ center, zoom = 18, onMapClick, timelineMode = 'pr
           </>
         ) : timelineMode === 'past' && historicalWmsConfig ? (
           <>
-            {/* Fallback base layer */}
-            <TileLayer
-              attribution='&copy; <a href="https://www.esri.com/">Esri</a>'
-              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-              maxNativeZoom={19}
-              maxZoom={20}
-            />
-            {/* Walloon historical imagery/map overlay */}
-            <WMSTileLayer
+            {/* Walloon historical imagery/map overlay - WMS using native Leaflet */}
+            {/* Note: WMS layer is the ONLY layer - it provides full coverage for Walloon region */}
+            {/* Key forces full remount when year changes to ensure clean state */}
+            <WmsLayer
               key={`wms-${timelineYear}`}
               url={historicalWmsConfig.url}
               layers={historicalWmsConfig.layers}
-              format="image/png"
-              transparent={false}
-              version="1.1.1"
-              opacity={1}
               attribution={`&copy; SPW - ${historicalWmsConfig.type === 'map' ? 'Carte' : 'Orthophoto'} ${timelineYear}`}
-            />
-          </>
-        ) : timelineMode === 'future' ? (
-          <>
-            {/* Present satellite with future indicator overlay */}
-            <TileLayer
-              attribution='&copy; <a href="https://www.esri.com/">Esri</a> | Imagery &copy; Esri, Maxar, Earthstar Geographics'
-              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-              maxNativeZoom={19}
-              maxZoom={20}
-              className="future-view"
+              center={center}
             />
           </>
         ) : (
-          /* Present - Clean 2025 imagery (rocks/labels removed) with zoom */
           <>
-            {/* Base satellite layer as fallback while custom images load */}
+            {/* Future mode - base satellite layer + custom property imagery */}
             <TileLayer
               attribution='&copy; <a href="https://www.esri.com/">Esri</a>'
               url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
               maxNativeZoom={19}
               maxZoom={22}
             />
-            {/* Clean zoom images - falls back to originals if clean versions don't exist */}
-            <CleanZoomImageOverlay />
+            {/* Overlay custom high-res property imagery on top */}
+            <CleanZoomImageOverlay center={center} />
           </>
         )}
 
@@ -415,20 +562,29 @@ export function GardenCanvas({ center, zoom = 18, onMapClick, timelineMode = 'pr
         ))}
       </MapContainer>
 
+      {/* Viewpoint position overlay for Future mode */}
+      {showViewpointOverlay && timelineMode === 'future' && (
+        <ViewpointPositionOverlay
+          cameraPosition={viewpointCameraPosition ?? null}
+          cameraDirection={viewpointCameraDirection}
+          onPositionChange={onViewpointPositionChange || (() => {})}
+          onDirectionChange={onViewpointDirectionChange || (() => {})}
+          enabled={true}
+        />
+      )}
+
       {/* Coordinates and timeline display */}
       <div className="absolute bottom-4 left-4 flex gap-2 z-[1000]">
         <div className="bg-black/70 text-white px-3 py-1 rounded text-sm font-mono">
           {center[0].toFixed(5)}, {center[1].toFixed(5)}
         </div>
-        {timelineMode !== 'present' && (
-          <div className={`px-3 py-1 rounded text-sm font-medium ${
-            timelineMode === 'past'
-              ? 'bg-amber-600/90 text-white'
-              : 'bg-purple-600/90 text-white'
-          }`}>
-            {timelineMode === 'past' ? `📜 ${timelineYear}` : `✨ ${timelineYear}`}
-          </div>
-        )}
+        <div className={`px-3 py-1 rounded text-sm font-medium ${
+          timelineMode === 'past'
+            ? 'bg-amber-600/90 text-white'
+            : 'bg-purple-600/90 text-white'
+        }`}>
+          {timelineMode === 'past' ? `📜 ${timelineYear}` : `✨ ${timelineYear}`}
+        </div>
       </div>
     </div>
   );

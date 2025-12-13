@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { saveGardenPlan, loadGardenPlan, getProperty } from '@/lib/api';
+import { saveGardenPlan, loadGardenPlan, getProperty, getActiveGardenPlan, bulkSavePlants, getPlants } from '@/lib/api';
 
 // Types
 export type CloudSyncStatus = 'idle' | 'syncing' | 'synced' | 'error';
@@ -13,12 +13,16 @@ export interface Plant {
   id: string;
   species: string;
   common_name: string;
-  category: 'tree' | 'fruit_tree' | 'shrub' | 'perennial' | 'hedge' | 'annual' | 'vegetable' | 'herb' | 'berry';
+  category: 'tree' | 'fruit_tree' | 'shrub' | 'perennial' | 'hedge' | 'annual' | 'vegetable' | 'herb' | 'berry' | 'wall_plant' | 'bulb';
   location: GeoPoint;
   planted_date: string;
   // For coverage area matching
   x?: number;
   y?: number;
+  // Plant images
+  images?: string[];
+  // Whether this is a default/existing plant (not to be deleted when creating new plans)
+  isDefault?: boolean;
 }
 
 export interface Zone {
@@ -31,7 +35,7 @@ export interface Zone {
 
 export interface Structure {
   id: string;
-  type: 'wall' | 'dry_stone_wall' | 'stone_path' | 'fence' | 'path' | 'shed' | 'greenhouse' | 'pond' | 'terrace' | 'stone_terrace' | 'chicken_coop' | 'beehive' | 'duck_pond' | 'other';
+  type: 'wall' | 'dry_stone_wall' | 'dry_stone_planter' | 'herb_spiral' | 'stone_path' | 'fence' | 'path' | 'shed' | 'greenhouse' | 'pond' | 'terrace' | 'stone_terrace' | 'chicken_coop' | 'beehive' | 'duck_pond' | 'other';
   coordinates: [number, number][];
   name?: string;
 }
@@ -49,11 +53,35 @@ export interface Property {
   area_sqm?: number;
 }
 
+// Camera position type for viewpoint
+export interface CameraPosition {
+  x: number;
+  y: number;
+}
+
 // Store state
 interface GardenState {
   // Property
   property: Property | null;
   setProperty: (property: Property) => void;
+
+  // Active garden plan ID (needed for plants API)
+  gardenPlanId: number | null;
+  setGardenPlanId: (id: number | null) => void;
+
+  // Future mode state
+  futureSelectedPlanId: number | null;
+  futureSelectedPhotoId: number | null;
+  futureCameraPosition: CameraPosition | null;
+  futureCameraDirection: number;
+  futurePlanPlants: Plant[];
+  futurePlanZones: Zone[];
+  futurePlanStructures: Structure[];
+  setFutureSelectedPlanId: (id: number | null) => void;
+  setFutureSelectedPhotoId: (id: number | null) => void;
+  setFutureCameraPosition: (pos: CameraPosition | null) => void;
+  setFutureCameraDirection: (degrees: number) => void;
+  setFuturePlanData: (plants: Plant[], zones: Zone[], structures: Structure[]) => void;
 
   // Garden data
   plants: Plant[];
@@ -105,16 +133,25 @@ interface GardenState {
 
 const initialState = {
   property: null,
-  plants: [],
-  zones: [],
-  structures: [],
+  gardenPlanId: null as number | null,
+  plants: [] as Plant[],
+  zones: [] as Zone[],
+  structures: [] as Structure[],
   selectedTool: 'select' as const,
-  selectedPlantType: null,
-  selectedItemId: null,
-  history: [],
+  selectedPlantType: null as string | null,
+  selectedItemId: null as string | null,
+  history: [] as Array<{ plants: Plant[]; zones: Zone[]; structures: Structure[] }>,
   historyIndex: -1,
   cloudSyncStatus: 'idle' as CloudSyncStatus,
-  lastSyncedAt: null,
+  lastSyncedAt: null as string | null,
+  // Future mode state
+  futureSelectedPlanId: null as number | null,
+  futureSelectedPhotoId: null as number | null,
+  futureCameraPosition: null as CameraPosition | null,
+  futureCameraDirection: 0,
+  futurePlanPlants: [] as Plant[],
+  futurePlanZones: [] as Zone[],
+  futurePlanStructures: [] as Structure[],
 };
 
 export const useGardenStore = create<GardenState>()(
@@ -124,6 +161,20 @@ export const useGardenStore = create<GardenState>()(
 
       // Property
       setProperty: (property) => set({ property }),
+
+      // Garden plan ID
+      setGardenPlanId: (id) => set({ gardenPlanId: id }),
+
+      // Future mode actions
+      setFutureSelectedPlanId: (id) => set({ futureSelectedPlanId: id }),
+      setFutureSelectedPhotoId: (id) => set({ futureSelectedPhotoId: id }),
+      setFutureCameraPosition: (pos) => set({ futureCameraPosition: pos }),
+      setFutureCameraDirection: (degrees) => set({ futureCameraDirection: degrees }),
+      setFuturePlanData: (plants, zones, structures) => set({
+        futurePlanPlants: plants,
+        futurePlanZones: zones,
+        futurePlanStructures: structures
+      }),
 
       // Plant actions
       addPlant: (plant) => {
@@ -228,25 +279,51 @@ export const useGardenStore = create<GardenState>()(
         }
       },
 
-      // Cloud sync - simplified for single-property mode
+      // Cloud sync - now uses dedicated plants table
       syncToCloud: async () => {
-        const { plants, zones, structures } = get();
+        const { plants, zones, structures, gardenPlanId } = get();
 
         set({ cloudSyncStatus: 'syncing' });
 
         try {
-          const result = await saveGardenPlan(plants, zones, structures);
+          // First save zones and structures to garden_plans JSONB (unchanged)
+          const result = await saveGardenPlan([], zones, structures);
 
-          if (result) {
-            set({
-              cloudSyncStatus: 'synced',
-              lastSyncedAt: new Date().toISOString(),
-            });
-            return true;
-          } else {
+          if (!result) {
             set({ cloudSyncStatus: 'error' });
             return false;
           }
+
+          // Get the garden plan ID if we don't have it
+          let planId = gardenPlanId;
+          if (!planId) {
+            const plan = await getActiveGardenPlan();
+            if (plan) {
+              planId = plan.id;
+              set({ gardenPlanId: planId });
+            }
+          }
+
+          // Now save plants to dedicated plants table
+          if (planId) {
+            await bulkSavePlants(planId, plants.map(p => ({
+              species: p.species,
+              common_name: p.common_name,
+              category: p.category,
+              location: p.location,
+              planted_date: p.planted_date,
+              metadata: {
+                images: p.images,
+                isDefault: p.isDefault,
+              },
+            })));
+          }
+
+          set({
+            cloudSyncStatus: 'synced',
+            lastSyncedAt: new Date().toISOString(),
+          });
+          return true;
         } catch (error) {
           console.error('Cloud sync error:', error);
           set({ cloudSyncStatus: 'error' });
@@ -258,13 +335,41 @@ export const useGardenStore = create<GardenState>()(
         set({ cloudSyncStatus: 'syncing' });
 
         try {
-          const data = await loadGardenPlan();
+          // Get active plan for zones/structures and plan ID
+          const plan = await getActiveGardenPlan();
 
-          if (data) {
+          if (plan) {
+            set({ gardenPlanId: plan.id });
+
+            // Load plants from dedicated plants table
+            const plantRecords = await getPlants(plan.id);
+
+            // Convert PlantRecord to Plant format
+            const plants: Plant[] = plantRecords.map((p) => {
+              // Extract images and isDefault from metadata if present
+              const metadata = (p as { metadata?: { images?: string[]; isDefault?: boolean } }).metadata;
+              return {
+                id: String(p.id), // Use DB id as string
+                species: p.species,
+                common_name: p.common_name,
+                category: p.category as Plant['category'],
+                location: p.location,
+                planted_date: p.planted_date || new Date().toISOString().split('T')[0],
+                images: metadata?.images,
+                isDefault: metadata?.isDefault,
+              };
+            });
+
+            // Handle both array and object formats for zones/structures
+            const toArray = <T>(data: T[] | Record<string, T>): T[] => {
+              if (Array.isArray(data)) return data;
+              return Object.values(data);
+            };
+
             set({
-              plants: data.plants,
-              zones: data.zones,
-              structures: data.structures,
+              plants,
+              zones: toArray(plan.zones || []) as Zone[],
+              structures: toArray(plan.structures || []) as Structure[],
               cloudSyncStatus: 'synced',
               lastSyncedAt: new Date().toISOString(),
               history: [],
@@ -313,6 +418,7 @@ export const useGardenStore = create<GardenState>()(
       name: 'garden-planner',
       partialize: (state) => ({
         property: state.property,
+        gardenPlanId: state.gardenPlanId,
         plants: state.plants,
         zones: state.zones,
         structures: state.structures,

@@ -1,5 +1,6 @@
 class GardenPlan < ApplicationRecord
   belongs_to :property
+  has_many :plants, dependent: :destroy
 
   validates :name, presence: true
   validates :status, inclusion: { in: %w[draft active archived] }
@@ -14,39 +15,36 @@ class GardenPlan < ApplicationRecord
   end
 
   def total_plants
-    plants.is_a?(Array) ? plants.size : plants.keys.size
+    plants.count
   end
 
   def total_zones
-    zones.is_a?(Array) ? zones.size : zones.keys.size
+    zones.is_a?(Array) ? zones.size : 0
   end
 
   # Get all plants at a specific location (for AI visualization)
-  def plants_at_location(x, y, radius: 5)
-    return [] unless plants.is_a?(Array)
+  def plants_at_location(lat, lng, radius_meters: 5)
+    # Convert radius from meters to approximate degrees (rough approximation)
+    radius_deg = radius_meters / 111_000.0
 
-    plants.select do |plant|
-      px = plant['x'] || plant['position']&.dig('x')
-      py = plant['y'] || plant['position']&.dig('y')
-      next false unless px && py
-
-      Math.sqrt((px - x)**2 + (py - y)**2) <= radius
-    end
+    plants.where(
+      "latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?",
+      lat - radius_deg, lat + radius_deg,
+      lng - radius_deg, lng + radius_deg
+    )
   end
 
   # Get plants visible from a viewpoint photo's coverage area
   def plants_in_coverage_area(coverage_area)
-    return [] unless plants.is_a?(Array) && coverage_area.present?
+    return plants.none unless coverage_area.present?
 
     area = coverage_area.with_indifferent_access
-    return [] unless area[:xmin] && area[:xmax] && area[:ymin] && area[:ymax]
+    return plants.none unless area[:ymin] && area[:ymax] && area[:xmin] && area[:xmax]
 
-    plants.select do |plant|
-      px = plant['x'] || plant['position']&.dig('x')
-      py = plant['y'] || plant['position']&.dig('y')
-      next false unless px && py
-
-      px >= area[:xmin] && px <= area[:xmax] && py >= area[:ymin] && py <= area[:ymax]
-    end
+    plants.where(
+      "latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?",
+      area[:ymin], area[:ymax],
+      area[:xmin], area[:xmax]
+    )
   end
 end

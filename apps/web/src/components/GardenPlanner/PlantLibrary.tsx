@@ -3,7 +3,7 @@
 import { useGardenStore, Plant } from '@/stores/garden-store';
 import { PLANT_LIBRARY, PlantCategory, GrowthModel } from '@/lib/plant-library';
 import { cn } from '@/lib/utils';
-import { TreeDeciduous, Flower2, Leaf, Fence, Sun, Apple, Carrot, Salad, Cherry } from 'lucide-react';
+import { TreeDeciduous, Flower2, Leaf, Fence, Sun, Apple, Carrot, Salad, Cherry, Layers, Droplets } from 'lucide-react';
 
 const categoryIcons: Record<PlantCategory, typeof TreeDeciduous> = {
   tree: TreeDeciduous,
@@ -15,18 +15,22 @@ const categoryIcons: Record<PlantCategory, typeof TreeDeciduous> = {
   vegetable: Carrot,
   herb: Salad,
   berry: Cherry,
+  wall_plant: Layers,
+  bulb: Droplets,
 };
 
 const categoryLabels: Record<PlantCategory, string> = {
-  tree: 'Trees',
-  fruit_tree: 'Fruit Trees',
-  shrub: 'Shrubs',
-  perennial: 'Perennials',
-  hedge: 'Hedges',
-  annual: 'Annuals',
-  vegetable: 'Vegetables',
-  herb: 'Herbs',
-  berry: 'Berries',
+  tree: 'Arbres',
+  fruit_tree: 'Arbres Fruitiers',
+  shrub: 'Arbustes',
+  perennial: 'Vivaces',
+  hedge: 'Haies',
+  annual: 'Annuelles',
+  vegetable: 'Légumes',
+  herb: 'Aromatiques',
+  berry: 'Petits Fruits',
+  wall_plant: 'Plantes de Mur',
+  bulb: 'Bulbes',
 };
 
 interface PlantLibraryProps {

@@ -47,7 +47,7 @@ function buildPredictionPrompt(request: GardenPredictionRequest): string {
     return `- ${plant.common_name} (${plant.species.replace(/_/g, ' ')}):
       Currently ${getGrowthStage(plant)}, will be ${stage} in ${targetYears} years.
       ${prediction ? `Predicted height: ${(prediction.predicted_height_cm / 100).toFixed(1)}m, Canopy: ${(prediction.predicted_canopy_diameter_cm / 100).toFixed(1)}m diameter` : ''}
-      ${model ? `Mature size: ${(model.mature_height_cm / 100).toFixed(1)}m, Growth rate: ${model.yearly_height_growth_cm}cm/year` : ''}`;
+      ${model ? `Mature size: ${(model.mature_height_cm / 100).toFixed(1)}m, Growth rate: ${model.growth_rate}` : ''}`;
   }).join('\n');
 
   // Build zone descriptions

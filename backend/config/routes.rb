@@ -10,6 +10,11 @@ Rails.application.routes.draw do
           member do
             post :activate
           end
+          resources :plants, except: [:new, :edit] do
+            collection do
+              post :bulk
+            end
+          end
         end
         resources :viewpoint_photos do
           member do

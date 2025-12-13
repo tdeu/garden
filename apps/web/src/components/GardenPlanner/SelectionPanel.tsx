@@ -183,7 +183,7 @@ export function SelectionPanel({ className }: SelectionPanelProps) {
                   </div>
                   <div>
                     <span className="text-neutral-500">Growth Rate:</span>
-                    <span className="text-white ml-1">{growthInfo.yearly_height_growth_cm}cm/yr</span>
+                    <span className="text-white ml-1">{growthInfo.growth_rate}</span>
                   </div>
                   <div>
                     <span className="text-neutral-500">CO₂ Capture:</span>
@@ -191,7 +191,7 @@ export function SelectionPanel({ className }: SelectionPanelProps) {
                   </div>
                   <div>
                     <span className="text-neutral-500">Maturity:</span>
-                    <span className="text-white ml-1">{growthInfo.maturity_years} years</span>
+                    <span className="text-white ml-1">{growthInfo.years_to_mature} years</span>
                   </div>
                 </div>
               </div>

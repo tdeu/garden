@@ -199,6 +199,81 @@ export async function loadGardenPlan(): Promise<{
 }
 
 // ============================================
+// Plants API (new dedicated table)
+// ============================================
+
+export interface PlantRecord {
+  id: number;
+  species: string;
+  common_name: string;
+  category: string;
+  location: { lat: number; lng: number };
+  planted_date: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getPlants(gardenPlanId: number): Promise<PlantRecord[]> {
+  return apiFetch<PlantRecord[]>(`/property/garden_plans/${gardenPlanId}/plants`);
+}
+
+export async function createPlant(
+  gardenPlanId: number,
+  plant: {
+    species: string;
+    common_name?: string;
+    category: string;
+    latitude: number;
+    longitude: number;
+    planted_date?: string;
+  }
+): Promise<PlantRecord> {
+  return apiFetch<PlantRecord>(`/property/garden_plans/${gardenPlanId}/plants`, {
+    method: 'POST',
+    body: JSON.stringify({ plant }),
+  });
+}
+
+export async function updatePlant(
+  gardenPlanId: number,
+  plantId: number,
+  updates: Partial<{
+    species: string;
+    common_name: string;
+    category: string;
+    latitude: number;
+    longitude: number;
+    planted_date: string;
+  }>
+): Promise<PlantRecord> {
+  return apiFetch<PlantRecord>(`/property/garden_plans/${gardenPlanId}/plants/${plantId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ plant: updates }),
+  });
+}
+
+export async function deletePlant(gardenPlanId: number, plantId: number): Promise<void> {
+  await apiFetch(`/property/garden_plans/${gardenPlanId}/plants/${plantId}`, { method: 'DELETE' });
+}
+
+export async function bulkSavePlants(
+  gardenPlanId: number,
+  plants: Array<{
+    species: string;
+    common_name?: string;
+    category: string;
+    location: { lat: number; lng: number };
+    planted_date?: string;
+    metadata?: Record<string, unknown>;
+  }>
+): Promise<PlantRecord[]> {
+  return apiFetch<PlantRecord[]>(`/property/garden_plans/${gardenPlanId}/plants/bulk`, {
+    method: 'POST',
+    body: JSON.stringify({ plants }),
+  });
+}
+
+// ============================================
 // Viewpoint Photos API
 // ============================================
 
@@ -326,13 +401,19 @@ export interface TransformViewpointRequest {
   target_year: number;
   season?: 'spring' | 'summer' | 'autumn' | 'winter';
   plants?: Plant[];
+  // Camera position for viewpoint (normalized 0-100)
+  camera_position?: { x: number; y: number };
+  // Camera direction in degrees (0-360)
+  camera_direction?: number;
 }
 
 export interface TransformViewpointResponse {
   success: boolean;
-  transformed_image_url: string | null;
+  generated_image_base64: string | null;
+  generated_image_url: string | null;
   scene_description: string;
-  transform_prompt: string;
+  prompt_used: string;
+  image_prompt_used?: string;
   plants_shown: Array<{
     name: string;
     visual_appearance: string;
@@ -347,15 +428,19 @@ export async function transformViewpoint(
   interface ApiResponse {
     data?: {
       success?: boolean;
-      transformed_image_url?: string | null;
+      generated_image_base64?: string | null;
+      generated_image_url?: string | null;
       scene_description?: string;
-      transform_prompt?: string;
+      prompt_used?: string;
+      image_prompt_used?: string;
       plants_shown?: Array<{ name: string; visual_appearance: string }>;
     };
     success?: boolean;
-    transformed_image_url?: string | null;
+    generated_image_base64?: string | null;
+    generated_image_url?: string | null;
     scene_description?: string;
-    transform_prompt?: string;
+    prompt_used?: string;
+    image_prompt_used?: string;
     plants_shown?: Array<{ name: string; visual_appearance: string }>;
   }
 
@@ -367,6 +452,8 @@ export async function transformViewpoint(
       target_years: request.target_year,
       season: request.season,
       plants: request.plants || [],
+      camera_position: request.camera_position,
+      camera_direction: request.camera_direction,
     }),
   });
 
@@ -374,9 +461,11 @@ export async function transformViewpoint(
   const data = response.data || response;
   return {
     success: data.success ?? true,
-    transformed_image_url: data.transformed_image_url || null,
+    generated_image_base64: data.generated_image_base64 || null,
+    generated_image_url: data.generated_image_url || null,
     scene_description: data.scene_description || '',
-    transform_prompt: data.transform_prompt || '',
+    prompt_used: data.prompt_used || '',
+    image_prompt_used: data.image_prompt_used,
     plants_shown: data.plants_shown || [],
     description: data.scene_description || '',
   };
@@ -428,6 +517,13 @@ export const apiClient = {
   deleteGardenPlan,
   saveGardenPlan,
   loadGardenPlan,
+
+  // Plants (dedicated table)
+  getPlants,
+  createPlant,
+  updatePlant,
+  deletePlant,
+  bulkSavePlants,
 
   // Viewpoint Photos
   getViewpointPhotos,

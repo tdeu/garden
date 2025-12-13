@@ -9,7 +9,8 @@ import { StructureTools } from '@/components/GardenPlanner/StructureTools';
 import { SelectionPanel } from '@/components/GardenPlanner/SelectionPanel';
 import { UndoRedoControls } from '@/components/GardenPlanner/UndoRedoControls';
 import { Timeline, TimelineMode } from '@/components/GardenPlanner/Timeline';
-import { ViewpointManager } from '@/components/GardenPlanner/ViewpointManager';
+import { PlanSelector } from '@/components/GardenPlanner/PlanSelector';
+import { FuturePlanner } from '@/components/GardenPlanner/FuturePlanner';
 import { useGardenStore } from '@/stores/garden-store';
 import { Save, Loader2, Home, Cloud, CloudOff, Check, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
@@ -45,6 +46,12 @@ export default function PlannerPage() {
     syncToCloud,
     initializeFromCloud,
     property,
+    // Future mode state
+    futureSelectedPhotoId,
+    futureCameraPosition,
+    futureCameraDirection,
+    setFutureCameraPosition,
+    setFutureCameraDirection,
   } = useGardenStore();
 
   // Timeline state
@@ -153,14 +160,33 @@ export default function PlannerPage() {
             zoom={18}
             timelineMode={timelineMode}
             timelineYear={timelineYear}
+            // Future mode viewpoint overlay props
+            showViewpointOverlay={timelineMode === 'future'}
+            viewpointCameraPosition={futureCameraPosition}
+            viewpointCameraDirection={futureCameraDirection}
+            onViewpointPositionChange={setFutureCameraPosition}
+            onViewpointDirectionChange={setFutureCameraDirection}
           />
         </main>
 
         {/* Right sidebar */}
-        <aside className="w-80 flex flex-col gap-4 p-4 bg-neutral-950 border-l border-neutral-800 overflow-y-auto">
-          <Timeline onTimeChange={handleTimeChange} />
-          <ViewpointManager />
-          {selectedItemId && <SelectionPanel />}
+        <aside className="w-80 flex flex-col bg-neutral-950 border-l border-neutral-800 overflow-y-auto">
+          {timelineMode === 'future' ? (
+            /* Future mode: Full FuturePlanner takes over */
+            <>
+              <div className="p-4 border-b border-neutral-800">
+                <Timeline onTimeChange={handleTimeChange} />
+              </div>
+              <FuturePlanner className="flex-1" />
+            </>
+          ) : (
+            /* Present/Past mode: Original layout */
+            <div className="p-4 flex flex-col gap-4">
+              <PlanSelector />
+              <Timeline onTimeChange={handleTimeChange} />
+              {selectedItemId && <SelectionPanel />}
+            </div>
+          )}
         </aside>
       </div>
     </div>

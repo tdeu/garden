@@ -56,6 +56,19 @@ deployments/**/solcInputs/
 # Claude Code / Playwright MCP (development tools)
 .claude/
 .playwright-mcp/
+playwright-report/
+
+# Personal photo archives (not part of the app)
+current-pics/
+stones/
+
+# Development logs
+log.md
+
+# Test/temp images at root
+*.JPG
+*.jpg
+!apps/
 
 # docs folder (if generated)
 docs/

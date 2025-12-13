@@ -7,6 +7,7 @@ import { Clock, History, Calendar, Sparkles, Image, Map } from 'lucide-react';
 // Available historical years from Walloon services
 // Aerial photos: 2006-2023, Historical maps: 1777-1868
 // 2025: Custom Google Maps screenshots (current state with rocks)
+// Note: 2024 removed - WMS service has no coverage for this property location
 const HISTORICAL_YEARS = [
   { year: 1777, type: 'map' as const, label: '1777' },
   { year: 1850, type: 'map' as const, label: '1850' },
