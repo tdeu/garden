@@ -106,6 +106,7 @@ GEM
     drb (2.2.3)
     erb (6.0.0)
     erubi (1.13.1)
+    exifr (1.5.1)
     factory_bot (6.5.6)
       activesupport (>= 6.1.0)
     factory_bot_rails (6.5.1)
@@ -329,11 +330,13 @@ DEPENDENCIES
   brakeman
   debug
   dotenv-rails
+  exifr
   factory_bot_rails
   faker
   faraday
   httparty
   image_processing (~> 1.2)
+  mini_magick
   pg (~> 1.1)
   puma (>= 5.0)
   rack-cors

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { saveGardenPlan, loadGardenPlan, getProperty, getActiveGardenPlan, bulkSavePlants, getPlants } from '@/lib/api';
+import { saveGardenPlan, loadGardenPlan, getProperty, getActiveGardenPlan, bulkSavePlants, getPlants, markPlantAsPlanted } from '@/lib/api';
+import { LifecycleStatus } from '@/types';
 
 // Types
 export type CloudSyncStatus = 'idle' | 'syncing' | 'synced' | 'error';
@@ -16,6 +17,10 @@ export interface Plant {
   category: 'tree' | 'fruit_tree' | 'shrub' | 'perennial' | 'hedge' | 'annual' | 'vegetable' | 'herb' | 'berry' | 'wall_plant' | 'bulb';
   location: GeoPoint;
   planted_date: string;
+  // Lifecycle fields
+  lifecycle_status?: LifecycleStatus;
+  planted_at?: string;
+  planted_photo_url?: string;
   // For coverage area matching
   x?: number;
   y?: number;
@@ -35,7 +40,7 @@ export interface Zone {
 
 export interface Structure {
   id: string;
-  type: 'wall' | 'dry_stone_wall' | 'dry_stone_planter' | 'herb_spiral' | 'stone_path' | 'fence' | 'path' | 'shed' | 'greenhouse' | 'pond' | 'terrace' | 'stone_terrace' | 'chicken_coop' | 'beehive' | 'duck_pond' | 'other';
+  type: 'house' | 'wall' | 'dry_stone_wall' | 'dry_stone_planter' | 'herb_spiral' | 'stone_path' | 'fence' | 'path' | 'driveway' | 'shed' | 'greenhouse' | 'pond' | 'terrace' | 'stone_terrace' | 'chicken_coop' | 'beehive' | 'duck_pond' | 'other';
   coordinates: [number, number][];
   name?: string;
 }
@@ -92,6 +97,7 @@ interface GardenState {
   addPlant: (plant: Plant) => void;
   updatePlant: (id: string, updates: Partial<Plant>) => void;
   deletePlant: (id: string) => void;
+  markPlantAsPlanted: (id: string, plantedAt?: Date, dropboxPhotoId?: number) => Promise<boolean>;
 
   // Zone actions
   addZone: (zone: Zone) => void;
@@ -194,6 +200,39 @@ export const useGardenStore = create<GardenState>()(
         set((state) => ({
           plants: state.plants.filter((p) => p.id !== id),
         }));
+      },
+
+      markPlantAsPlanted: async (id, plantedAt, dropboxPhotoId) => {
+        const { gardenPlanId } = get();
+        if (!gardenPlanId) return false;
+
+        try {
+          const plantId = parseInt(id);
+          const updated = await markPlantAsPlanted(gardenPlanId, plantId, {
+            planted_at: plantedAt?.toISOString(),
+            dropbox_photo_id: dropboxPhotoId,
+          });
+
+          // Update local state
+          get().saveToHistory();
+          set((state) => ({
+            plants: state.plants.map((p) =>
+              p.id === id
+                ? {
+                    ...p,
+                    lifecycle_status: updated.lifecycle_status,
+                    planted_at: updated.planted_at || undefined,
+                    planted_photo_url: updated.planted_photo_url || undefined,
+                  }
+                : p
+            ),
+          }));
+
+          return true;
+        } catch (error) {
+          console.error('Failed to mark plant as planted:', error);
+          return false;
+        }
       },
 
       // Zone actions
@@ -355,6 +394,11 @@ export const useGardenStore = create<GardenState>()(
                 category: p.category as Plant['category'],
                 location: p.location,
                 planted_date: p.planted_date || new Date().toISOString().split('T')[0],
+                // Lifecycle fields
+                lifecycle_status: p.lifecycle_status,
+                planted_at: p.planted_at || undefined,
+                planted_photo_url: p.planted_photo_url || undefined,
+                // Metadata fields
                 images: metadata?.images,
                 isDefault: metadata?.isDefault,
               };

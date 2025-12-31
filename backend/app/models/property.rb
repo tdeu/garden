@@ -1,8 +1,8 @@
 class Property < ApplicationRecord
-  # Single-user mode: user is optional
-  belongs_to :user, optional: true
+  # Single-user mode - no authentication required
   has_many :garden_plans, dependent: :destroy
   has_many :viewpoint_photos, dependent: :destroy
+  has_many :dropbox_photos, dependent: :destroy
   has_one :active_garden_plan, -> { where(status: 'active') }, class_name: 'GardenPlan'
 
   validates :name, presence: true

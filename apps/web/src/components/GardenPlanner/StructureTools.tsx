@@ -17,20 +17,22 @@ const useMap = typeof window !== 'undefined'
   : () => null;
 
 const structureTypes = [
-  { id: 'dry_stone_wall', label: 'Mur en Pierre Sèche', color: '#78716c', dashed: false },
-  { id: 'stone_path', label: 'Chemin en Pierre', color: '#a8a29e', dashed: true },
-  { id: 'wall', label: 'Wall', color: '#57534e', dashed: false },
-  { id: 'fence', label: 'Fence', color: '#a16207', dashed: false },
-  { id: 'path', label: 'Path', color: '#78716c', dashed: true },
-  { id: 'terrace', label: 'Terrace', color: '#a1a1aa', dashed: false },
-  { id: 'stone_terrace', label: 'Terrasse en Pierre', color: '#d6d3d1', dashed: false },
-  { id: 'chicken_coop', label: 'Poulailler', color: '#f59e0b', dashed: false },
-  { id: 'beehive', label: 'Ruche', color: '#fbbf24', dashed: false },
-  { id: 'duck_pond', label: 'Mare aux Canards', color: '#0ea5e9', dashed: false },
-  { id: 'shed', label: 'Shed', color: '#92400e', dashed: false },
-  { id: 'greenhouse', label: 'Greenhouse', color: '#65a30d', dashed: false },
-  { id: 'pond', label: 'Pond', color: '#3b82f6', dashed: false },
-  { id: 'other', label: 'Other', color: '#8b5cf6', dashed: true },
+  { id: 'house', label: 'Maison', color: '#64748b', dashed: false, isPolygon: true },
+  { id: 'shed', label: 'Shed', color: '#92400e', dashed: false, isPolygon: true },
+  { id: 'greenhouse', label: 'Greenhouse', color: '#65a30d', dashed: false, isPolygon: true },
+  { id: 'terrace', label: 'Terrace', color: '#a1a1aa', dashed: false, isPolygon: true },
+  { id: 'stone_terrace', label: 'Terrasse en Pierre', color: '#d6d3d1', dashed: false, isPolygon: true },
+  { id: 'pond', label: 'Pond', color: '#3b82f6', dashed: false, isPolygon: true },
+  { id: 'driveway', label: 'Allée', color: '#6b7280', dashed: false, isPolygon: true },
+  { id: 'dry_stone_wall', label: 'Mur en Pierre Sèche', color: '#78716c', dashed: false, isPolygon: false },
+  { id: 'stone_path', label: 'Chemin en Pierre', color: '#a8a29e', dashed: true, isPolygon: false },
+  { id: 'wall', label: 'Wall', color: '#57534e', dashed: false, isPolygon: false },
+  { id: 'fence', label: 'Fence', color: '#a16207', dashed: false, isPolygon: false },
+  { id: 'path', label: 'Path', color: '#78716c', dashed: true, isPolygon: false },
+  { id: 'chicken_coop', label: 'Poulailler', color: '#f59e0b', dashed: false, isPolygon: true },
+  { id: 'beehive', label: 'Ruche', color: '#fbbf24', dashed: false, isPolygon: true },
+  { id: 'duck_pond', label: 'Mare aux Canards', color: '#0ea5e9', dashed: false, isPolygon: true },
+  { id: 'other', label: 'Other', color: '#8b5cf6', dashed: true, isPolygon: false },
 ] as const;
 
 type StructureTypeId = typeof structureTypes[number]['id'];
@@ -79,20 +81,35 @@ function StructureDrawControl({ selectedStructureType, onStructureCreated, isAct
 
     const structureConfig = structureTypes.find((s) => s.id === selectedStructureType);
     const color = structureConfig?.color || '#8b5cf6';
+    const isPolygon = structureConfig?.isPolygon ?? false;
 
     const drawControl = new L.Control.Draw({
       position: 'topright',
       draw: {
-        polyline: {
+        polyline: isPolygon ? false : {
           shapeOptions: {
             color: color,
             weight: 4,
             dashArray: structureConfig?.dashed ? '10, 10' : undefined,
           },
         },
-        polygon: false,
+        polygon: isPolygon ? {
+          shapeOptions: {
+            color: color,
+            fillColor: color,
+            fillOpacity: 0.3,
+            weight: 3,
+          },
+        } : false,
+        rectangle: isPolygon ? {
+          shapeOptions: {
+            color: color,
+            fillColor: color,
+            fillOpacity: 0.3,
+            weight: 3,
+          },
+        } : false,
         circle: false,
-        rectangle: false,
         marker: false,
         circlemarker: false,
       },
@@ -108,9 +125,14 @@ function StructureDrawControl({ selectedStructureType, onStructureCreated, isAct
     const handleDrawCreated = (e: any) => {
       const layer = e.layer;
 
-      if (layer instanceof L.Polyline) {
+      if (layer instanceof L.Polygon) {
+        // Polygon returns nested array, get first ring
+        const latlngs = layer.getLatLngs()[0] as any[];
+        const coordinates: [number, number][] = latlngs.map((ll: any) => [ll.lat, ll.lng]);
+        onStructureCreated(coordinates);
+      } else if (layer instanceof L.Polyline) {
         const latlngs = layer.getLatLngs() as any[];
-        const coordinates: [number, number][] = latlngs.map((ll: any) => [ll.lng, ll.lat]);
+        const coordinates: [number, number][] = latlngs.map((ll: any) => [ll.lat, ll.lng]);
         onStructureCreated(coordinates);
       }
     };

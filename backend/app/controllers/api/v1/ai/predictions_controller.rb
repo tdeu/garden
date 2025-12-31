@@ -44,8 +44,9 @@ module Api
           target_years = (params[:target_years] || params[:targetYears] || params[:target_year])&.to_i || 5
           season = params[:season] || 'summer'
 
-          # Filter plants to those visible in this photo's coverage area
-          visible_plants = filter_plants_in_coverage(plants, viewpoint_photo.coverage_area)
+          # Filter plants to those visible in camera's 60° field of view
+          visible_plants = filter_plants_in_fov(plants, viewpoint_photo.camera_position, viewpoint_photo.camera_direction)
+          Rails.logger.info("FOV Filter result: #{visible_plants.length} of #{plants.length} plants visible")
 
           # Generate the scene description and AI image
           gemini = GeminiService.new
@@ -59,15 +60,51 @@ module Api
           render_success({
             success: true,
             generated_image_base64: result[:image_base64],
-            generated_image_url: result[:image_url],
-            scene_description: result[:scene_description],
-            prompt_used: result[:prompt],
-            image_prompt_used: result[:image_prompt],
-            plants_shown: result[:plants_shown]
+            plants_count: result[:plants_count] || visible_plants.length
           })
         rescue => e
           Rails.logger.error("Transform viewpoint error: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
           render_error("Failed to generate transformation: #{e.message}")
+        end
+
+        # POST /api/v1/ai/identify_plant
+        # Identify a plant from an uploaded photo using AI vision
+        def identify_plant
+          # Accept either base64 image data or file upload
+          image_base64 = nil
+          mime_type = 'image/jpeg'
+
+          if params[:image].present?
+            # File upload
+            uploaded_file = params[:image]
+            image_base64 = Base64.strict_encode64(uploaded_file.read)
+            mime_type = uploaded_file.content_type || 'image/jpeg'
+          elsif params[:image_base64].present?
+            # Direct base64 data
+            image_base64 = params[:image_base64]
+            mime_type = params[:mime_type] || 'image/jpeg'
+          else
+            return render_error('No image provided. Send image as file upload or base64 data.', status: :bad_request)
+          end
+
+          # Optional context from user (e.g., "I think this might be an oak tree")
+          context = params[:context]
+
+          gemini = GeminiService.new
+          result = gemini.identify_plant(
+            image_base64: image_base64,
+            mime_type: mime_type,
+            context: context
+          )
+
+          if result[:error] && !result[:success]
+            render_error(result[:error])
+          else
+            render_success(result)
+          end
+        rescue => e
+          Rails.logger.error("Identify plant error: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
+          render_error("Failed to identify plant: #{e.message}")
         end
 
         # POST /api/v1/ai/generate_prediction
@@ -105,21 +142,51 @@ module Api
 
         private
 
-        def filter_plants_in_coverage(plants, coverage_area)
-          return plants if coverage_area.blank?
+        # Filter plants to only those within the camera's field of view
+        # Using 80° FOV (±40°) to be slightly more permissive than the visual 60° cone
+        # This ensures plants near the edges are included
+        def filter_plants_in_fov(plants, camera_position, camera_direction)
+          return [] if camera_position.blank? || camera_direction.blank?
 
-          area = coverage_area.with_indifferent_access
-          return plants unless area[:xmin] && area[:xmax] && area[:ymin] && area[:ymax]
+          # Property bounds (matching frontend CanvasGarden.tsx)
+          bounds = { north: 49.6409, south: 49.6365, east: 5.5584, west: 5.5460 }
+          fov_half_angle = 40.0  # 80° total FOV (slightly wider than visual 60° to include edge cases)
+
+          # Convert camera position (0-100 normalized) to lat/lng
+          cam_x = (camera_position[:x] || camera_position['x']).to_f
+          cam_y = (camera_position[:y] || camera_position['y']).to_f
+          cam_lng = bounds[:west] + (cam_x / 100.0) * (bounds[:east] - bounds[:west])
+          cam_lat = bounds[:north] - (cam_y / 100.0) * (bounds[:north] - bounds[:south])
+          cam_dir = camera_direction.to_f
+
+          Rails.logger.info("FOV Filter: camera at (#{cam_lat.round(6)}, #{cam_lng.round(6)}) direction #{cam_dir}°")
 
           plants.select do |plant|
-            # Check both direct x/y and nested position
-            px = plant['x'] || plant.dig('position', 'x')
-            py = plant['y'] || plant.dig('position', 'y')
+            # Get plant lat/lng
+            lat = plant['latitude'] || plant.dig('location', 'lat')
+            lng = plant['longitude'] || plant.dig('location', 'lng')
+            next false unless lat && lng
 
-            # If no x/y coordinates, include the plant anyway (might be using lat/lng)
-            next true unless px && py
+            lat = lat.to_f
+            lng = lng.to_f
 
-            px >= area[:xmin] && px <= area[:xmax] && py >= area[:ymin] && py <= area[:ymax]
+            # Calculate angle from camera to plant
+            # Match frontend's angle convention: atan2(dx, -dy) where 0° = north
+            dx = lng - cam_lng
+            dy = cam_lat - lat
+            # Use -dy to match screen coordinate convention (Y increases downward in screen, but lat increases upward)
+            angle_to_plant = Math.atan2(dx, -dy) * (180.0 / Math::PI)
+            angle_to_plant += 360 if angle_to_plant < 0
+
+            # Calculate relative angle from camera direction
+            relative_angle = angle_to_plant - cam_dir
+            relative_angle -= 360 if relative_angle > 180
+            relative_angle += 360 if relative_angle < -180
+
+            in_fov = relative_angle.abs <= fov_half_angle
+            Rails.logger.debug("Plant at (#{lat.round(6)}, #{lng.round(6)}): angle=#{angle_to_plant.round(1)}° relative=#{relative_angle.round(1)}° in_fov=#{in_fov}")
+
+            in_fov
           end
         end
       end

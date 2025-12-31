@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { useGardenStore, Plant, Zone, Structure } from '@/stores/garden-store';
 import { PLANT_LIBRARY, PlantCategory } from '@/lib/plant-library';
 import { cn } from '@/lib/utils';
-import { Trash2, X, Calendar, MapPin, TreeDeciduous, Shapes, Route } from 'lucide-react';
+import { Trash2, X, Calendar, MapPin, TreeDeciduous, Shapes, Route, Sprout, Check, Loader2 } from 'lucide-react';
+import { MarkPlantedModal } from './MarkPlantedModal';
 
 interface SelectionPanelProps {
   className?: string;
@@ -36,6 +37,7 @@ export function SelectionPanel({ className }: SelectionPanelProps) {
   // Local state for editing
   const [editName, setEditName] = useState('');
   const [editDate, setEditDate] = useState('');
+  const [showMarkPlantedModal, setShowMarkPlantedModal] = useState(false);
 
   // Update local state when selection changes
   useEffect(() => {
@@ -137,6 +139,61 @@ export function SelectionPanel({ className }: SelectionPanelProps) {
         {/* Plant-specific fields */}
         {itemType === 'plant' && selectedPlant && (
           <>
+            {/* Lifecycle Status */}
+            <div>
+              <label className="block text-xs font-medium text-neutral-400 mb-1">
+                Status
+              </label>
+              <div className={cn(
+                'px-3 py-2 rounded-md text-sm flex items-center gap-2',
+                selectedPlant.lifecycle_status === 'planted' || selectedPlant.lifecycle_status === 'established'
+                  ? 'bg-green-900/30 text-green-400'
+                  : 'bg-yellow-900/30 text-yellow-400'
+              )}>
+                {selectedPlant.lifecycle_status === 'planted' || selectedPlant.lifecycle_status === 'established' ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    {selectedPlant.lifecycle_status === 'planted' ? 'Planted' : 'Established'}
+                    {selectedPlant.planted_at && (
+                      <span className="text-xs opacity-75">
+                        on {new Date(selectedPlant.planted_at).toLocaleDateString()}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <Sprout className="w-4 h-4" />
+                    Planned
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Mark as Planted button for planned plants */}
+            {(!selectedPlant.lifecycle_status || selectedPlant.lifecycle_status === 'planned') && (
+              <button
+                onClick={() => setShowMarkPlantedModal(true)}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors"
+              >
+                <Sprout className="w-4 h-4" />
+                <span>Mark as Planted</span>
+              </button>
+            )}
+
+            {/* Planted Photo */}
+            {selectedPlant.planted_photo_url && (
+              <div>
+                <label className="block text-xs font-medium text-neutral-400 mb-1">
+                  Planted Photo
+                </label>
+                <img
+                  src={selectedPlant.planted_photo_url}
+                  alt="Planted photo"
+                  className="w-full rounded-md"
+                />
+              </div>
+            )}
+
             {/* Species */}
             <div>
               <label className="block text-xs font-medium text-neutral-400 mb-1">
@@ -238,6 +295,14 @@ export function SelectionPanel({ className }: SelectionPanelProps) {
           <span>Delete {itemType}</span>
         </button>
       </div>
+
+      {/* Mark as Planted Modal */}
+      {showMarkPlantedModal && selectedPlant && (
+        <MarkPlantedModal
+          plant={selectedPlant}
+          onClose={() => setShowMarkPlantedModal(false)}
+        />
+      )}
     </div>
   );
 }

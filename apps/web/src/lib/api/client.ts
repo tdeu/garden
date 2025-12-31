@@ -199,8 +199,11 @@ export async function loadGardenPlan(): Promise<{
 }
 
 // ============================================
-// Plants API (new dedicated table)
+// Plants API (with inventory support)
 // ============================================
+
+export type HealthStatus = 'thriving' | 'healthy' | 'fair' | 'struggling' | 'declining' | 'dead' | 'unknown';
+export type IdentificationConfidence = 'confirmed' | 'likely' | 'uncertain' | 'unknown';
 
 export interface PlantRecord {
   id: number;
@@ -209,12 +212,52 @@ export interface PlantRecord {
   category: string;
   location: { lat: number; lng: number };
   planted_date: string | null;
+  // Inventory fields
+  health_status: HealthStatus;
+  identification_confidence: IdentificationConfidence;
+  estimated_age_years: number | null;
+  age_years: number | null;
+  acquired_from: string | null;
+  notes: string | null;
+  last_observed_at: string | null;
+  // Photos
+  photo_urls: string[];
+  photos_count: number;
+  // Metadata
+  metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
 
-export async function getPlants(gardenPlanId: number): Promise<PlantRecord[]> {
-  return apiFetch<PlantRecord[]>(`/property/garden_plans/${gardenPlanId}/plants`);
+export interface PlantStats {
+  total: number;
+  by_category: Record<string, number>;
+  by_health_status: Record<string, number>;
+  by_identification: Record<string, number>;
+  needs_attention: number;
+  not_observed_recently: number;
+}
+
+export interface PlantFilters {
+  health_status?: HealthStatus;
+  needs_attention?: boolean;
+  unidentified?: boolean;
+  not_observed?: boolean;
+}
+
+export async function getPlants(gardenPlanId: number, filters?: PlantFilters): Promise<PlantRecord[]> {
+  const params = new URLSearchParams();
+  if (filters?.health_status) params.set('health_status', filters.health_status);
+  if (filters?.needs_attention) params.set('needs_attention', 'true');
+  if (filters?.unidentified) params.set('unidentified', 'true');
+  if (filters?.not_observed) params.set('not_observed', 'true');
+
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch<PlantRecord[]>(`/property/garden_plans/${gardenPlanId}/plants${query}`);
+}
+
+export async function getPlantStats(gardenPlanId: number): Promise<PlantStats> {
+  return apiFetch<PlantStats>(`/property/garden_plans/${gardenPlanId}/plants/stats`);
 }
 
 export async function createPlant(
@@ -226,6 +269,11 @@ export async function createPlant(
     latitude: number;
     longitude: number;
     planted_date?: string;
+    health_status?: HealthStatus;
+    identification_confidence?: IdentificationConfidence;
+    estimated_age_years?: number;
+    acquired_from?: string;
+    notes?: string;
   }
 ): Promise<PlantRecord> {
   return apiFetch<PlantRecord>(`/property/garden_plans/${gardenPlanId}/plants`, {
@@ -244,6 +292,11 @@ export async function updatePlant(
     latitude: number;
     longitude: number;
     planted_date: string;
+    health_status: HealthStatus;
+    identification_confidence: IdentificationConfidence;
+    estimated_age_years: number;
+    acquired_from: string;
+    notes: string;
   }>
 ): Promise<PlantRecord> {
   return apiFetch<PlantRecord>(`/property/garden_plans/${gardenPlanId}/plants/${plantId}`, {
@@ -256,6 +309,44 @@ export async function deletePlant(gardenPlanId: number, plantId: number): Promis
   await apiFetch(`/property/garden_plans/${gardenPlanId}/plants/${plantId}`, { method: 'DELETE' });
 }
 
+export async function uploadPlantPhotos(
+  gardenPlanId: number,
+  plantId: number,
+  photos: File[]
+): Promise<PlantRecord> {
+  const formData = new FormData();
+  photos.forEach(photo => formData.append('photos[]', photo));
+
+  const response = await fetch(
+    `${API_BASE_URL}/property/garden_plans/${gardenPlanId}/plants/${plantId}/upload_photos`,
+    {
+      method: 'POST',
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new ApiError(error.error || 'Upload failed', response.status);
+  }
+
+  return response.json();
+}
+
+export async function observePlant(
+  gardenPlanId: number,
+  plantId: number,
+  observation: {
+    notes?: string;
+    health_status?: HealthStatus;
+  }
+): Promise<PlantRecord> {
+  return apiFetch<PlantRecord>(`/property/garden_plans/${gardenPlanId}/plants/${plantId}/observe`, {
+    method: 'POST',
+    body: JSON.stringify(observation),
+  });
+}
+
 export async function bulkSavePlants(
   gardenPlanId: number,
   plants: Array<{
@@ -264,6 +355,11 @@ export async function bulkSavePlants(
     category: string;
     location: { lat: number; lng: number };
     planted_date?: string;
+    health_status?: HealthStatus;
+    identification_confidence?: IdentificationConfidence;
+    estimated_age_years?: number;
+    acquired_from?: string;
+    notes?: string;
     metadata?: Record<string, unknown>;
   }>
 ): Promise<PlantRecord[]> {
@@ -499,6 +595,143 @@ export async function generatePrediction(
 }
 
 // ============================================
+// Plant Identification API
+// ============================================
+
+export interface PlantSuggestion {
+  species: string;
+  common_name: string;
+  common_name_fr?: string;
+  confidence?: 'high' | 'medium' | 'low';
+  confidence_percentage: number;
+  reasoning?: string;
+}
+
+export interface PlantIdentificationResult {
+  success: boolean;
+  error?: string;
+  primary_suggestion: PlantSuggestion;
+  alternative_suggestions: PlantSuggestion[];
+  category: string;
+  characteristics_observed: string[];
+  health_assessment: {
+    status: HealthStatus;
+    observations?: string;
+  };
+  care_tips?: string;
+  identification_notes?: string;
+}
+
+export async function identifyPlant(
+  image: File,
+  context?: string
+): Promise<PlantIdentificationResult> {
+  const formData = new FormData();
+  formData.append('image', image);
+  if (context) {
+    formData.append('context', context);
+  }
+
+  const response = await fetch(`${API_BASE_URL}/ai/identify_plant`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new ApiError(error.error || 'Identification failed', response.status);
+  }
+
+  return response.json();
+}
+
+// ============================================
+// Dropbox API (Photo inbox)
+// ============================================
+
+export type DropboxPhotoStatus = 'pending' | 'assigned' | 'archived';
+
+export interface DropboxPhoto {
+  id: number;
+  photo_url: string | null;
+  status: DropboxPhotoStatus;
+  latitude: number | null;
+  longitude: number | null;
+  taken_at: string | null;
+  camera_model: string | null;
+  assignable_type: 'Plant' | 'ViewpointPhoto' | null;
+  assignable_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getDropboxPhotos(status?: DropboxPhotoStatus): Promise<DropboxPhoto[]> {
+  const params = status ? `?status=${status}` : '';
+  return apiFetch<DropboxPhoto[]>(`/property/dropbox${params}`);
+}
+
+export async function getDropboxPhoto(photoId: number): Promise<DropboxPhoto> {
+  return apiFetch<DropboxPhoto>(`/property/dropbox/${photoId}`);
+}
+
+export async function uploadDropboxPhotos(files: File[]): Promise<DropboxPhoto[]> {
+  const formData = new FormData();
+  files.forEach(file => formData.append('photos[]', file));
+
+  const response = await fetch(`${API_BASE_URL}/property/dropbox`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new ApiError(error.error || 'Upload failed', response.status);
+  }
+
+  return response.json();
+}
+
+export async function assignDropboxPhoto(
+  photoId: number,
+  target: { type: 'Plant' | 'ViewpointPhoto'; id: number }
+): Promise<DropboxPhoto> {
+  return apiFetch<DropboxPhoto>(`/property/dropbox/${photoId}/assign`, {
+    method: 'POST',
+    body: JSON.stringify({
+      target_type: target.type,
+      target_id: target.id,
+    }),
+  });
+}
+
+export async function deleteDropboxPhoto(photoId: number): Promise<void> {
+  await apiFetch(`/property/dropbox/${photoId}`, { method: 'DELETE' });
+}
+
+// ============================================
+// Plant Lifecycle API
+// ============================================
+
+export type LifecycleStatus = 'planned' | 'planted' | 'established' | 'removed';
+
+export async function markPlantAsPlanted(
+  gardenPlanId: number,
+  plantId: number,
+  options?: {
+    planted_at?: string;
+    dropbox_photo_id?: number;
+  }
+): Promise<PlantRecord> {
+  return apiFetch<PlantRecord>(
+    `/property/garden_plans/${gardenPlanId}/plants/${plantId}/mark_planted`,
+    {
+      method: 'POST',
+      body: JSON.stringify(options || {}),
+    }
+  );
+}
+
+// ============================================
 // Export API client
 // ============================================
 
@@ -518,11 +751,14 @@ export const apiClient = {
   saveGardenPlan,
   loadGardenPlan,
 
-  // Plants (dedicated table)
+  // Plants (with inventory support)
   getPlants,
+  getPlantStats,
   createPlant,
   updatePlant,
   deletePlant,
+  uploadPlantPhotos,
+  observePlant,
   bulkSavePlants,
 
   // Viewpoint Photos
@@ -538,6 +774,17 @@ export const apiClient = {
   // AI
   transformViewpoint,
   generatePrediction,
+  identifyPlant,
+
+  // Dropbox (Photo inbox)
+  getDropboxPhotos,
+  getDropboxPhoto,
+  uploadDropboxPhotos,
+  assignDropboxPhoto,
+  deleteDropboxPhoto,
+
+  // Plant Lifecycle
+  markPlantAsPlanted,
 };
 
 export default apiClient;

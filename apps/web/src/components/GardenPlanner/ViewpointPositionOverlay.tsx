@@ -1,9 +1,25 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Camera, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CameraPosition } from '@/stores/garden-store';
+
+// Property bounds (matching CanvasGarden.tsx and backend)
+const PROPERTY_BOUNDS = {
+  north: 49.6409,
+  south: 49.6365,
+  east: 5.5584,
+  west: 5.5460,
+};
+
+// Meters per degree at this latitude
+const METERS_PER_DEG_LAT = 111_000;
+const METERS_PER_DEG_LNG = 71_800;
+
+// Property dimensions in meters
+const PROPERTY_HEIGHT_M = (PROPERTY_BOUNDS.north - PROPERTY_BOUNDS.south) * METERS_PER_DEG_LAT; // ~489m
+const PROPERTY_WIDTH_M = (PROPERTY_BOUNDS.east - PROPERTY_BOUNDS.west) * METERS_PER_DEG_LNG; // ~890m
 
 interface ViewpointPositionOverlayProps {
   cameraPosition: CameraPosition | null;
@@ -131,7 +147,16 @@ export function ViewpointPositionOverlay({
     };
   }, [cameraPosition, cameraDirection, normalizedToPixel]);
 
-  // Render field of view cone
+  // Calculate meters per pixel based on container size
+  const metersPerPixel = useMemo(() => {
+    if (containerSize.width === 0 || containerSize.height === 0) return 1;
+    // Use average of width and height for scale
+    const metersPerPixelX = PROPERTY_WIDTH_M / containerSize.width;
+    const metersPerPixelY = PROPERTY_HEIGHT_M / containerSize.height;
+    return (metersPerPixelX + metersPerPixelY) / 2;
+  }, [containerSize]);
+
+  // Render field of view cone with distance markers
   const renderFovCone = useCallback(() => {
     if (!cameraPosition) return null;
 
@@ -149,15 +174,68 @@ export function ViewpointPositionOverlay({
 
     const pathD = `M ${pinPos.x} ${pinPos.y} L ${leftX} ${leftY} A ${coneLength} ${coneLength} 0 0 1 ${rightX} ${rightY} Z`;
 
+    // Calculate distance markers along cone edges
+    const distanceMarkers = [10, 20, 30, 50]; // meters
+    const markers: JSX.Element[] = [];
+
+    distanceMarkers.forEach((distanceM) => {
+      const pixelDistance = distanceM / metersPerPixel;
+
+      // Only show markers that fit within the cone
+      if (pixelDistance > coneLength) return;
+
+      // Left edge marker
+      const leftMarkerX = pinPos.x + Math.cos(leftRadians) * pixelDistance;
+      const leftMarkerY = pinPos.y + Math.sin(leftRadians) * pixelDistance;
+
+      // Right edge marker
+      const rightMarkerX = pinPos.x + Math.cos(rightRadians) * pixelDistance;
+      const rightMarkerY = pinPos.y + Math.sin(rightRadians) * pixelDistance;
+
+      // Add tick marks on the lines
+      markers.push(
+        <g key={`marker-${distanceM}`}>
+          {/* Left tick */}
+          <circle cx={leftMarkerX} cy={leftMarkerY} r="3" fill="#9333ea" />
+          <text
+            x={leftMarkerX - 8}
+            y={leftMarkerY - 8}
+            fontSize="10"
+            fill="#9333ea"
+            fontWeight="bold"
+            textAnchor="end"
+          >
+            {distanceM}m
+          </text>
+
+          {/* Right tick */}
+          <circle cx={rightMarkerX} cy={rightMarkerY} r="3" fill="#9333ea" />
+          <text
+            x={rightMarkerX + 8}
+            y={rightMarkerY - 8}
+            fontSize="10"
+            fill="#9333ea"
+            fontWeight="bold"
+            textAnchor="start"
+          >
+            {distanceM}m
+          </text>
+        </g>
+      );
+    });
+
     return (
-      <path
-        d={pathD}
-        fill="rgba(147, 51, 234, 0.2)"
-        stroke="rgba(147, 51, 234, 0.6)"
-        strokeWidth="1"
-      />
+      <g>
+        <path
+          d={pathD}
+          fill="rgba(147, 51, 234, 0.2)"
+          stroke="rgba(147, 51, 234, 0.6)"
+          strokeWidth="1"
+        />
+        {markers}
+      </g>
     );
-  }, [cameraPosition, cameraDirection, normalizedToPixel]);
+  }, [cameraPosition, cameraDirection, normalizedToPixel, metersPerPixel]);
 
   const pinPos = cameraPosition ? normalizedToPixel(cameraPosition) : null;
   const arrowEnd = getArrowEndpoint();

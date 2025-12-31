@@ -184,7 +184,8 @@ cd backend
 rails server
 
 # Terminal 2: Start Next.js frontend (port 3001)
-npm run dev
+cd apps/web
+npx next dev --webpack --port 3001
 ```
 
 Open http://localhost:3001/planner in your browser.

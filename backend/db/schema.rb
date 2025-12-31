@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2025_12_12_153606) do
+ActiveRecord::Schema[7.2].define(version: 2025_12_31_110635) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -40,6 +40,22 @@ ActiveRecord::Schema[7.2].define(version: 2025_12_12_153606) do
     t.bigint "blob_id", null: false
     t.string "variation_digest", null: false
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
+  end
+
+  create_table "dropbox_photos", force: :cascade do |t|
+    t.bigint "property_id", null: false
+    t.integer "status", default: 0, null: false
+    t.decimal "latitude", precision: 10, scale: 6
+    t.decimal "longitude", precision: 10, scale: 6
+    t.datetime "taken_at"
+    t.string "camera_model"
+    t.string "assignable_type"
+    t.bigint "assignable_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assignable_type", "assignable_id"], name: "index_dropbox_photos_on_assignable"
+    t.index ["property_id"], name: "index_dropbox_photos_on_property_id"
+    t.index ["status"], name: "index_dropbox_photos_on_status"
   end
 
   create_table "garden_plans", force: :cascade do |t|
@@ -72,9 +88,22 @@ ActiveRecord::Schema[7.2].define(version: 2025_12_12_153606) do
     t.jsonb "metadata", default: {}
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "health_status", default: "unknown"
+    t.string "identification_confidence", default: "unknown"
+    t.integer "estimated_age_years"
+    t.string "acquired_from"
+    t.text "notes"
+    t.datetime "last_observed_at"
+    t.integer "lifecycle_status", default: 0, null: false
+    t.datetime "planted_at"
+    t.bigint "planted_photo_id"
     t.index ["garden_plan_id", "category"], name: "index_plants_on_garden_plan_id_and_category"
     t.index ["garden_plan_id"], name: "index_plants_on_garden_plan_id"
+    t.index ["health_status"], name: "index_plants_on_health_status"
+    t.index ["identification_confidence"], name: "index_plants_on_identification_confidence"
     t.index ["latitude", "longitude"], name: "index_plants_on_latitude_and_longitude"
+    t.index ["lifecycle_status"], name: "index_plants_on_lifecycle_status"
+    t.index ["planted_photo_id"], name: "index_plants_on_planted_photo_id"
   end
 
   create_table "properties", force: :cascade do |t|
@@ -125,7 +154,9 @@ ActiveRecord::Schema[7.2].define(version: 2025_12_12_153606) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "dropbox_photos", "properties"
   add_foreign_key "garden_plans", "properties"
+  add_foreign_key "plants", "dropbox_photos", column: "planted_photo_id"
   add_foreign_key "plants", "garden_plans"
   add_foreign_key "viewpoint_photos", "properties"
 end
